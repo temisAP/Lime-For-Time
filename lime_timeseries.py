@@ -4,6 +4,7 @@ from lime import explanation
 from lime import lime_base
 import math
 import logging
+import torch
 
 class TSDomainMapper(explanation.DomainMapper):
     def __init__(self, signal_names, num_slices, is_multivariate):
@@ -14,12 +15,12 @@ class TSDomainMapper(explanation.DomainMapper):
         self.num_slices = num_slices
         self.signal_names = signal_names
         self.is_multivariate = is_multivariate
-        
+
     def map_exp_ids(self, exp, **kwargs):
         # in case of univariate, don't change feature ids
         if not self.is_multivariate:
             return exp
-        
+
         names = []
         for _id, weight in exp:
             # from feature idx, extract both the pair number of slice
@@ -65,7 +66,7 @@ class LimeTimeSeriesExplainer(object):
                          timeseries_instance,
                          classifier_fn,
                          num_slices,
-                         labels=(1,),
+                         labels=(0,),
                          top_labels=None,
                          num_features=10,
                          num_samples=5000,
@@ -110,7 +111,7 @@ class LimeTimeSeriesExplainer(object):
             num_samples, num_slices, replacement_method)
 
         is_multivariate = len(timeseries_instance.shape) > 1
-        
+
         if self.class_names is None:
             self.class_names = [str(x) for x in range(predictions[0].shape[0])]
 
@@ -123,6 +124,7 @@ class LimeTimeSeriesExplainer(object):
             labels = np.argsort(predictions[0])[-top_labels:]
             ret_exp.top_labels = list(predictions)
             ret_exp.top_labels.reverse()
+
         for label in labels:
             (ret_exp.intercept[int(label)],
              ret_exp.local_exp[int(label)],
@@ -180,7 +182,7 @@ class LimeTimeSeriesExplainer(object):
         len_ts = len(timeseries)
         if len(timeseries.shape) > 1:  # multivariate
             num_channels, len_ts = timeseries.shape
-        
+
         values_per_slice = math.ceil(len_ts / num_slices)
         deact_per_sample = np.random.randint(1, num_slices + 1, num_samples - 1)
         perturbation_matrix = np.ones((num_samples, num_channels, num_slices))
@@ -197,13 +199,13 @@ class LimeTimeSeriesExplainer(object):
             channels_to_perturb = np.random.choice(range(num_channels),
                                                    num_channels_to_perturb,
                                                    replace=False)
-            
+
             logging.info("sample %d, perturbing signals %r", i,
                          channels_to_perturb)
-            
+
             for chan in channels_to_perturb:
                 perturbation_matrix[i, chan, inactive_idxs] = 0
-                
+
             tmp_series = timeseries.copy()
 
             for idx in inactive_idxs:
@@ -226,7 +228,7 @@ class LimeTimeSeriesExplainer(object):
             original_data.append(tmp_series)
 
         predictions = classifier_fn(np.array(original_data))
-        
+
         # create a flat representation for features
         perturbation_matrix = perturbation_matrix.reshape((num_samples, num_channels * num_slices))
         distances = distance_fn(perturbation_matrix)
@@ -238,7 +240,7 @@ def perturb_total_mean(m, start_idx, end_idx, channels):
     if len(m.shape) == 1:
         m[start_idx:end_idx] = m.mean()
         return
-    
+
     for chan in channels:
         m[chan][start_idx:end_idx] = m[chan].mean()
 
@@ -247,10 +249,10 @@ def perturb_mean(m, start_idx, end_idx, channels):
     if len(m.shape) == 1:
         m[start_idx:end_idx] = np.mean(m[start_idx:end_idx])
         return
-    
+
     for chan in channels:
         m[chan][start_idx:end_idx] = np.mean(m[chan][start_idx:end_idx])
-        
+
 def perturb_noise(m, start_idx, end_idx, channels):
     # univariate
     if len(m.shape) == 1:
@@ -262,4 +264,3 @@ def perturb_noise(m, start_idx, end_idx, channels):
         m[chan][start_idx:end_idx] = np.random.uniform(m[chan].min(),
                                                        m[chan].max(),
                                                        end_idx - start_idx)
-        

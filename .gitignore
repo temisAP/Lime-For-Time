@@ -2,3 +2,5 @@
 /**/.ipynb_checkpoints
 *.egg-info
 data/dataset.pkl
+data/model.pkl
+convnets_modified.onnx
